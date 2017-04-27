@@ -86,22 +86,28 @@ def bilibili_download_by_cids(cids, title, output_dir='.', merge=True, info_only
 
 
 def bilibili_download_by_cid(cid, title, output_dir='.', merge=True, info_only=False):
-    sign_this = hashlib.md5(bytes('cid={cid}&from=miniplay&player=1{SECRETKEY_MINILOADER}'.format(cid = cid, SECRETKEY_MINILOADER = SECRETKEY_MINILOADER), 'utf-8')).hexdigest()
-    url = 'http://interface.bilibili.com/playurl?&cid=' + cid + '&from=miniplay&player=1' + '&sign=' + sign_this
-    urls = [i
-            if not re.match(r'.*\.qqvideo\.tc\.qq\.com', i)
-            else re.sub(r'.*\.qqvideo\.tc\.qq\.com', 'http://vsrc.store.qq.com', i)
-            for i in parse_cid_playurl(get_content(url))]
+    while True:
+        try:
+            sign_this = hashlib.md5(bytes('cid={cid}&from=miniplay&player=1{SECRETKEY_MINILOADER}'.format(cid = cid, SECRETKEY_MINILOADER = SECRETKEY_MINILOADER), 'utf-8')).hexdigest()
+            url = 'http://interface.bilibili.com/playurl?&cid=' + cid + '&from=miniplay&player=1' + '&sign=' + sign_this
+            urls = [i
+                    if not re.match(r'.*\.qqvideo\.tc\.qq\.com', i)
+                    else re.sub(r'.*\.qqvideo\.tc\.qq\.com', 'http://vsrc.store.qq.com', i)
+                    for i in parse_cid_playurl(get_content(url))]
 
-    type_ = ''
-    size = 0
-    for url in urls:
-        _, type_, temp = url_info(url)
-        size += temp or 0
+            type_ = ''
+            size = 0
+            for url in urls:
+                _, type_, temp = url_info(url)
+                size += temp or 0
 
-    print_info(site_info, title, type_, size)
-    if not info_only:
-        download_urls(urls, title, type_, total_size=None, output_dir=output_dir, merge=merge)
+            print_info(site_info, title, type_, size)
+            if not info_only:
+                download_urls(urls, title, type_, total_size=None, output_dir=output_dir, merge=merge, timeout=1)
+        except socket.timeout:
+            continue
+        else:
+            break
 
 
 def bilibili_live_download_by_cid(cid, title, output_dir='.', merge=True, info_only=False):
@@ -127,10 +133,11 @@ def bilibili_download(url, output_dir='.', merge=True, info_only=False, **kwargs
 
     if re.match(r'https?://bangumi\.bilibili\.com/', url):
         # quick hack for bangumi URLs
-        episode_id = r1(r'data-current-episode-id="(\d+)"', html)
+        episode_id = r1(r'#(\d+)$', url) or r1(r'first_ep_id = "(\d+)"', html)
         cont = post_content('http://bangumi.bilibili.com/web_api/get_source',
                             post_data={'episode_id': episode_id})
         cid = json.loads(cont)['result']['cid']
+        title = '%s [%s]' % (title, episode_id)
         bilibili_download_by_cid(str(cid), title, output_dir=output_dir, merge=merge, info_only=info_only)
 
     else:
@@ -167,10 +174,14 @@ def bilibili_download(url, output_dir='.', merge=True, info_only=False, **kwargs
                 if not pages:
                     cids = [cid]
                     titles = [r1(r'<option value=.* selected>\s*([^<>]+)\s*</option>', html) or title]
-
                 for i in range(len(cids)):
+                    completeTitle=None
+                    if (title == titles[i]):
+                        completeTitle=title
+                    else:
+                        completeTitle=title+"-"+titles[i]#Build Better Title
                     bilibili_download_by_cid(cids[i],
-                                             titles[i],
+                                             completeTitle,
                                              output_dir=output_dir,
                                              merge=merge,
                                              info_only=info_only)
